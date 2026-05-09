@@ -3,13 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>질문 기반 데이터 시각화 시스템</title>
+    <title>핵심 역량 진단 시스템</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
+    <style>
+        body { font-family: "Pretendard", sans-serif; }
+    </style>
 </head>
-<body class="bg-slate-50 min-h-screen p-4 md:p-8">
+<body class="bg-slate-100 min-h-screen p-4 md:p-10">
     <div id="root"></div>
 
     <script type="text/babel">
@@ -22,11 +26,13 @@
             const [focusedQuestion, setFocusedQuestion] = React.useState(null);
 
             React.useEffect(() => {
+                // 상단 타이틀 로드
                 fetch('http://localhost:3000/api/config')
                     .then(res => res.json())
                     .then(config => setTitle(config.title))
                     .catch(err => console.log('설정 로드 실패:', err));
 
+                // 질문 목록 로드
                 fetch('http://localhost:3000/api/questions')
                     .then(res => res.json())
                     .then(data => {
@@ -40,29 +46,27 @@
                     });
             }, []);
 
-            // 키보드 이벤트 처리
+            // 키보드(숫자키 1-5) 이벤트 핸들러
             React.useEffect(() => {
                 const handleKeyPress = (e) => {
-                    if (result) return; // 결과 화면에서는 키보드 입력 무시
+                    if (result || !focusedQuestion) return;
 
                     const key = e.key;
-                    if (['1', '2', '3', '4', '5'].includes(key) && focusedQuestion) {
+                    if (['1', '2', '3', '4', '5'].includes(key)) {
                         const { categoryId, questionIndex } = focusedQuestion;
                         handleResponseChange(categoryId, questionIndex, parseInt(key));
-
-                        // 다음 질문으로 포커스 이동
                         moveToNextQuestion(categoryId, questionIndex);
                     }
                 };
 
                 window.addEventListener('keydown', handleKeyPress);
                 return () => window.removeEventListener('keydown', handleKeyPress);
-            }, [focusedQuestion, result]);
+            }, [focusedQuestion, result, questions]);
 
             const handleResponseChange = (categoryId, questionIndex, value) => {
                 setResponses(prev => {
                     const newResponses = { ...prev };
-                    newResponses[categoryId][questionIndex] = parseInt(value);
+                    newResponses[categoryId][questionIndex] = value;
                     return newResponses;
                 });
             };
@@ -71,203 +75,151 @@
                 const categoryIndex = questions.findIndex(cat => cat.id === currentCategoryId);
                 const currentCategory = questions[categoryIndex];
 
-                // 같은 카테고리의 다음 질문
                 if (currentQuestionIndex < currentCategory.questions.length - 1) {
                     setFocusedQuestion({
                         categoryId: currentCategoryId,
                         questionIndex: currentQuestionIndex + 1
                     });
-                }
-                // 다음 카테고리의 첫 질문
-                else if (categoryIndex < questions.length - 1) {
+                } else if (categoryIndex < questions.length - 1) {
                     setFocusedQuestion({
                         categoryId: questions[categoryIndex + 1].id,
                         questionIndex: 0
                     });
-                }
-                // 마지막 질문이면 포커스 해제
-                else {
+                } else {
                     setFocusedQuestion(null);
                 }
             };
 
             const handleSubmit = async (e) => {
                 e.preventDefault();
-
-                // 미응답 체크
+                
                 let allAnswered = true;
                 Object.values(responses).forEach(arr => {
                     if (arr.some(val => val === null)) allAnswered = false;
                 });
 
                 if (!allAnswered) {
-                    alert('모든 문항에 응답해주세요.');
+                    alert('아직 응답하지 않은 문항이 있습니다.');
                     return;
                 }
 
                 setLoading(true);
-
                 try {
                     const response = await fetch('http://localhost:3000/api/calculate', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        userResponses: responses
-                    })
+                        body: JSON.stringify({ userResponses: responses })
                     });
-
                     const data = await response.json();
                     setResult(data);
                 } catch (error) {
-                    console.error('분석 실패:', error);
                     alert('분석 중 오류가 발생했습니다.');
                 } finally {
                     setLoading(false);
                 }
             };
 
-            const resetForm = () => {
-                setResult(null);
-                setFocusedQuestion(null);
-                const initialResponses = {};
-                questions.forEach(cat => {
-                    initialResponses[cat.id] = new Array(cat.questions.length).fill(null);
-                });
-                setResponses(initialResponses);
-            };
-
-            const isQuestionFocused = (categoryId, questionIndex) => {
-                return focusedQuestion?.categoryId === categoryId && 
-                       focusedQuestion?.questionIndex === questionIndex;
-            };
-
             if (loading && questions.length === 0) {
-                return (
-                    <div className="max-w-4xl mx-auto bg-white p-6 rounded-lg shadow">
-                        <p className="text-center text-slate-500">로딩 중...</p>
-                    </div>
-                );
+                return <div className="flex items-center justify-center min-h-[400px] text-slate-400 font-bold">준비 중...</div>;
             }
 
             return (
-                <div className="max-w-5xl mx-auto">
+                <div className="max-w-4xl mx-auto">
                     {!result ? (
-                        <form onSubmit={handleSubmit} className="bg-white p-6 md:p-8 rounded-xl shadow-lg">
-                            <div className="mb-8 pb-6 border-b border-slate-200">
-                                <h1 className="text-2xl md:text-3xl font-bold mb-2 text-slate-800">{title}</h1>
-                                <p className="text-sm text-slate-500 mb-2">
-                                    첫 번째 문항을 클릭한 후, <span className="font-bold text-blue-600">숫자키 1~5</span>를 눌러 순서대로 응답하세요.
+                        <form onSubmit={handleSubmit} className="bg-white p-6 md:p-12 rounded-[2rem] shadow-2xl shadow-slate-200 space-y-10">
+                            {/* 헤더 세션 */}
+                            <div className="pb-8 border-b border-slate-100">
+                                <h1 className="text-3xl font-black text-slate-800 tracking-tight mb-3">{title || "핵심 역량 진단"}</h1>
+                                <p className="text-sm text-slate-500 font-medium">
+                                    질문을 클릭한 뒤 <span className="text-blue-600 font-bold">숫자키 1~5</span>를 눌러 순서대로 응답할 수 있습니다.
                                 </p>
-                                <div className="flex items-center gap-6 text-xs text-slate-600 mt-3">
-                                    <span>1: 매우 그렇지 않다</span>
-                                    <span>2: 그렇지 않다</span>
-                                    <span>3: 보통이다</span>
-                                    <span>4: 그렇다</span>
-                                    <span>5: 매우 그렇다</span>
+                                <div className="flex flex-wrap gap-3 mt-6">
+                                    {['매우 그렇지 않다', '그렇지 않다', '보통이다', '그렇다', '매우 그렇다'].map((txt, i) => (
+                                        <span key={i} className="text-[10px] font-bold px-3 py-1.5 bg-slate-50 text-slate-400 rounded-full border border-slate-100">
+                                            {i+1}. {txt}
+                                        </span>
+                                    ))}
                                 </div>
                             </div>
 
-                            <div className="space-y-6">
+                            {/* 질문 리스트 */}
+                            <div className="space-y-12">
                                 {questions.map((category, catIdx) => (
-                                    <div key={category.id} className="bg-slate-50 p-5 rounded-lg">
-                                        <h3 className="font-bold text-base mb-4 text-slate-800">
-                                            {catIdx + 1}. {category.label}
-                                        </h3>
-                                        <div className="space-y-3">
-                                            {category.questions.map((question, qIdx) => (
-                                                <div 
-                                                    key={qIdx}
-                                                    onClick={() => setFocusedQuestion({ 
-                                                        categoryId: category.id, 
-                                                        questionIndex: qIdx 
-                                                    })}
-                                                    className={`
-                                                        p-4 rounded-lg cursor-pointer transition-all
-                                                        ${isQuestionFocused(category.id, qIdx) 
-                                                            ? 'bg-blue-100 border-2 border-blue-500 shadow-md' 
-                                                            : 'bg-white border-2 border-transparent hover:border-blue-200'}
-                                                        ${responses[category.id]?.[qIdx] !== null 
-                                                            ? 'border-green-300' 
-                                                            : ''}
-                                                    `}
-                                                >
-                                                    <div className="flex items-start justify-between gap-4">
-                                                        <p className="text-sm text-slate-700 flex-1">
-                                                            <span className="font-semibold text-slate-500 mr-2">
-                                                                {catIdx + 1}-{qIdx + 1}.
-                                                            </span>
+                                    <div key={category.id} className="space-y-6">
+                                        <div className="flex items-center gap-3">
+                                            <span className="w-8 h-8 rounded-xl bg-slate-800 text-white flex items-center justify-center font-black text-xs">{catIdx + 1}</span>
+                                            <h3 className="text-lg font-black text-slate-800">{category.label}</h3>
+                                        </div>
+                                        <div className="grid gap-3">
+                                            {category.questions.map((question, qIdx) => {
+                                                const isFocused = focusedQuestion?.categoryId === category.id && focusedQuestion?.questionIndex === qIdx;
+                                                const val = responses[category.id][qIdx];
+                                                
+                                                return (
+                                                    <div 
+                                                        key={qIdx}
+                                                        onClick={() => setFocusedQuestion({ categoryId: category.id, questionIndex: qIdx })}
+                                                        className={`group p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col md:flex-row justify-between items-center gap-4 ${
+                                                            isFocused ? 'bg-blue-50 border-blue-500 shadow-lg scale-[1.01]' : 
+                                                            val !== null ? 'bg-white border-green-200' : 'bg-white border-slate-50 hover:border-slate-200 shadow-sm'
+                                                        }`}
+                                                    >
+                                                        <p className="text-[15px] font-bold text-slate-700 leading-snug flex-1">
+                                                            <span className="text-slate-300 mr-2 font-mono">{catIdx+1}-{qIdx+1}.</span>
                                                             {question}
                                                         </p>
-                                                        <div className="flex gap-2 flex-shrink-0">
-                                                            {[1, 2, 3, 4, 5].map(val => (
+                                                        <div className="flex gap-1.5">
+                                                            {[1, 2, 3, 4, 5].map(num => (
                                                                 <button
-                                                                    key={val}
+                                                                    key={num}
                                                                     type="button"
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        handleResponseChange(category.id, qIdx, val);
-                                                                    }}
-                                                                    className={`
-                                                                        w-10 h-10 rounded-lg font-bold text-sm
-                                                                        transition-all
-                                                                        ${responses[category.id]?.[qIdx] === val
-                                                                            ? 'bg-blue-600 text-white shadow-lg scale-110'
-                                                                            : 'bg-white text-slate-600 border-2 border-slate-300 hover:border-blue-400'}
-                                                                    `}
+                                                                    onClick={(e) => { e.stopPropagation(); handleResponseChange(category.id, qIdx, num); moveToNextQuestion(category.id, qIdx); }}
+                                                                    className={`w-10 h-10 rounded-xl font-black text-sm transition-all ${
+                                                                        val === num ? 'bg-blue-600 text-white shadow-xl scale-110' : 'bg-slate-50 text-slate-300 hover:bg-slate-100'
+                                                                    }`}
                                                                 >
-                                                                    {val}
+                                                                    {num}
                                                                 </button>
                                                             ))}
                                                         </div>
                                                     </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
                                 ))}
                             </div>
 
-                            <button
-                                type="submit"
-                                disabled={loading}
-                                className="w-full mt-8 bg-blue-600 text-white py-4 rounded-lg font-bold text-lg hover:bg-blue-700 transition-colors disabled:bg-slate-400 shadow-lg"
-                            >
-                                {loading ? '분석 중...' : '분석 결과 보기'}
+                            <button type="submit" className="w-full h-16 bg-slate-800 text-white rounded-2xl font-black text-lg hover:bg-black transition-all shadow-xl active:scale-[0.98]">
+                                분석 결과 확인하기
                             </button>
                         </form>
                     ) : (
-                        <div className="space-y-6">
-                            <div className="bg-white p-6 md:p-8 rounded-xl shadow-lg">
-                                <h2 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-6">
-                                    {result.title}
-                                </h2>
-                                <div className="space-y-6">
-                                    {result.data.map((item, idx) => (
-                                        <div key={idx} className="space-y-2">
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-base font-semibold text-slate-700">{item.label}</span>
-                                                <span className="text-lg font-mono font-bold text-blue-600">
-                                                    {item.score.toFixed(1)} / 10.0
-                                                </span>
-                                            </div>
-                                            <div className="h-4 bg-slate-100 rounded-full overflow-hidden">
-                                                <div 
-                                                    style={{ 
-                                                        width: `${item.percent}%`, 
-                                                        backgroundColor: item.color 
-                                                    }}
-                                                    className="h-full rounded-full transition-all duration-1000"
-                                                ></div>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
+                        <div className="bg-white p-8 md:p-12 rounded-[2rem] shadow-2xl space-y-8">
+                            <div className="text-center">
+                                <h2 className="text-xs font-black text-blue-600 uppercase tracking-[0.2em] mb-2">Analysis Result</h2>
+                                <h1 className="text-3xl font-black text-slate-800 tracking-tight">{result.title}</h1>
                             </div>
-                            <button
-                                onClick={resetForm}
-                                className="w-full bg-slate-600 text-white py-4 rounded-lg font-bold text-lg hover:bg-slate-700 transition-colors shadow-lg"
-                            >
-                                새로운 분석 시작
+
+                            <div className="grid gap-6">
+                                {result.data.map((item, idx) => (
+                                    <div key={idx} className="space-y-3">
+                                        <div className="flex justify-between items-end">
+                                            <span className="font-black text-slate-700">{item.label}</span>
+                                            <span className="text-xl font-mono font-black text-blue-600">{item.score.toFixed(1)} <span className="text-xs text-slate-300">/ 10</span></span>
+                                        </div>
+                                        <div className="h-4 bg-slate-100 rounded-full overflow-hidden">
+                                            <div 
+                                                className="h-full rounded-full transition-all duration-1000"
+                                                style={{ width: `${item.percent}%`, backgroundColor: item.color }}
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <button onClick={() => { setResult(null); setFocusedQuestion(null); }} className="w-full h-16 border-2 border-slate-100 text-slate-400 rounded-2xl font-black hover:bg-slate-50 transition-all">
+                                다시 테스트하기
                             </button>
                         </div>
                     )}
