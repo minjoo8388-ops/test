@@ -3,6 +3,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
+app.use(express.static(__dirname));
 
 // 설문 문항 (각 선택지는 성향 점수에 반영)
 // 성향: leader(리더형), team(협력형), analyst(분석형), creative(창의형)
